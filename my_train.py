@@ -86,12 +86,6 @@ def train(student, train_loader, test_loader, unlabelled_train_loader, args):
     teacher.eval()
 
 
-    # for hard label
-    # _, _, _ = test(student, unlabelled_train_loader, epoch=0, save_name='Train ACC Unlabelled', args=args)
-
-    # vp = model[1].prototypes.detach().cpu().numpy()
-    # np.savez('vp.npz', vp=vp)
-
     for epoch in range(start_epoch, args.epochs):
         loss_record = AverageMeter()
         student.train()
@@ -103,9 +97,6 @@ def train(student, train_loader, test_loader, unlabelled_train_loader, args):
 
         args.logger.info("Epoch:{} \t ema_weights:{:.4f}".format(epoch, args.ema_param))
       
-        # for hard label
-        # unl_head = student[1].prototypes[:student[1].act_protos]
-    
         for batch_idx, batch in enumerate(train_loader):
             """
             images: List, [[bs, C, H, W], ..., [bs, C, H, W]]
@@ -133,14 +124,7 @@ def train(student, train_loader, test_loader, unlabelled_train_loader, args):
                 sup_labels  = torch.cat([class_labels[mask_lab] for _ in range(2)], dim=0)
                 cls_loss    = nn.CrossEntropyLoss()(sup_logits, sup_labels)
 
-                # pdb.set_trace()
-                # hard label
-                # with torch.no_grad():
-                #     sout        = student[0].feat_tmp # [256, 768]
-                #     sim         = F.linear(F.normalize(sout, dim=-1, p=2), F.normalize(unl_head, dim=-1, p=2))
-                #     hard_label  = torch.argmax(sim, dim=-1)
-                # cluster_loss = nn.CrossEntropyLoss()(student_out_unl/0.1, hard_label)
-             
+    
                 # clustering, unsup
                 cluster_loss    = cluster_criterion(student_out_unl, teacher_out_unl, epoch)
                 avg_probs       = (student_out_unl / 0.1).softmax(dim=1).mean(dim=0)
@@ -266,9 +250,7 @@ def match_idx(protos, weights):
     
 @torch.no_grad()
 def test(model, test_loader, epoch, save_name, args, reload:bool=False):
-    # exp_name = 'best_cub'# best_cub best_scars best_aircraft best_cifar100
-    # args.best_model_path = f'./dev_outputs/NPC/log/{exp_name}/checkpoints/model_best.pt'
-    # # pdb.set_trace()
+  
     if reload:
         model = load_trained_paras(args.best_model_path, [model], ['model'])[0]
   
@@ -284,10 +266,8 @@ def test(model, test_loader, epoch, save_name, args, reload:bool=False):
     print('Collecting features...')
     # First extract all features
     for batch_idx, (images, label, _) in enumerate(tqdm(test_loader)):
-    # for batch_idx, (images, label, _, _) in enumerate(tqdm(test_loader)):
   
         images            = images.cuda(non_blocking=True)
-        # images            = images[0].cuda(non_blocking=True)
 
         # forward
         _, _, logits      = model(images)
@@ -332,18 +312,11 @@ def test(model, test_loader, epoch, save_name, args, reload:bool=False):
     # use the obtained centroid to predict the lable to single data
     centroid = np.concatenate(centroid) # [-1, 768]
 
-    # cost = timer.measure()
-    # print(cost)
-    # pdb.set_trace()
     # update the unlablled head
     estimate_k  = centroid.shape[0]
     args.logger.info(f'estimate_k is {estimate_k}')
     model[1].act_protos              = estimate_k
-
-    # model[1].prototypes[:estimate_k] = torch.Tensor(centroid).cuda() # cub 67.3
-
-    w_idx = match_idx(centroid, model[1].prototypes)
-    model[1].prototypes[w_idx] = torch.Tensor(centroid).cuda()
+    model[1].prototypes[:estimate_k] = torch.Tensor(centroid).cuda() 
 
     print('Done!')
 
@@ -364,43 +337,8 @@ def test(model, test_loader, epoch, save_name, args, reload:bool=False):
             else:
                 preds.append(all_preds[i])
 
-   # -----------------------
-    # K-MEANS
-    # -----------------------
-    # print('Fitting K-Means...')
-    # all_feats_norm        = np.concatenate(all_feats_norm)
-
-    # # kmeans           = KMeans(n_clusters=args.num_labeled_classes + args.num_unlabeled_classes, random_state=0).fit(all_feats_norm)
-    # # preds            = kmeans.labels_
-
-    # # results            = run_kmeans(all_feats_norm, num_cluster=args.num_labeled_classes + args.num_unlabeled_classes)
-    # # preds              = np.array(results['im2cluster'][0])
-
-    # print('Done!')
-                
-    # -----------------------
-    # FINCH
-    # -----------------------
-    # print('Fitting ...')
-    # all_feats_norm           = np.concatenate(all_feats_norm)
-    # # all_feats_norm         = np.concatenate(all_feats_unnorm)
-    # c, num_clust, preds = FINCH(all_feats_norm, 
-    #                             req_clust=args.num_labeled_classes + args.num_unlabeled_classes, 
-    #                             use_ann_above_samples=10000, verbose=False)
-    # print('Done!')
-
-    # -----------------------
-    # EVALUATE
-    # -----------------------
-    # pdb.set_trace()  
-
     preds                     = np.array(preds)
    
-    # if (epoch+1) == 10:
-    #     vp = model[1].prototypes.detach().cpu().numpy()
-    #     np.savez('epoch10_w_wp.npz', y_true=targets, y_pred=preds, feat_unorm=all_feats_unnorm, feat_norm=all_feats_norm, vp=vp, estimate_k=estimate_k)
-    #     pdb.set_trace()
-    # np.savez(f'{exp_name}.npz', y_true=targets, y_pred=preds, feat_unorm=all_feats_unnorm, feat_norm=all_feats_norm)
     all_acc, old_acc, new_acc = log_accs_from_preds(y_true=targets, y_pred=preds, mask=mask,
                                                     T=epoch, eval_funcs=args.eval_funcs, save_name=save_name,
                                                     args=args)
@@ -577,11 +515,7 @@ if __name__ == "__main__":
 
     # NOTE: Hardcoded image size as we do not finetune the entire ViT model
     args.image_size     = 224
-    # args.mlp_out_dim    = int((args.num_labeled_classes + args.num_unlabeled_classes))
-    # args.mlp_out_dim    = int((args.num_labeled_classes + args.num_unlabeled_classes)*1.5)
     args.mlp_out_dim    = int((args.num_labeled_classes + args.num_unlabeled_classes)*args.vp_num)
-    # args.mlp_out_dim    = int((args.num_labeled_classes + args.num_unlabeled_classes)*2.5)
-    # args.mlp_out_dim    = args.num_labeled_classes
 
     # --------------------
     # CONTRASTIVE TRANSFORM
@@ -626,8 +560,6 @@ if __name__ == "__main__":
     # ----------------------
     # TRAIN
     # ----------------------
-    # train(model, train_loader, test_loader_labelled, test_loader_unlabelled, args)
-
     print('TRAIN...')
     train(model, train_loader, None, test_loader_unlabelled, args)
 
