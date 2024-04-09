@@ -414,7 +414,7 @@ if __name__ == "__main__":
     parser.add_argument('--TMS_weight_base', type=float, default=0.7)
     parser.add_argument('--enable_DInfoNCE', type=str2bool, default=True)
     parser.add_argument('--tao_f', type=float, default=0.6)
-    parser.add_argument('--vp_num', type=float, default=2)
+    parser.add_argument('--vp_num', type=float, default=4)
     parser.add_argument('--loss_ablat', type=str, default='w_all')
 
     parser.add_argument('--top_k', default=10, type=int)
@@ -515,7 +515,7 @@ if __name__ == "__main__":
 
     # NOTE: Hardcoded image size as we do not finetune the entire ViT model
     args.image_size     = 224
-    args.mlp_out_dim    = int((args.num_labeled_classes + args.num_unlabeled_classes)*args.vp_num)
+    args.mlp_out_dim    = int(args.num_labeled_classes*args.vp_num)
 
     # --------------------
     # CONTRASTIVE TRANSFORM
